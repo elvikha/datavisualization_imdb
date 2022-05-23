@@ -1,0 +1,307 @@
+---
+title: "IMDb VISUALISATION"
+author: "Elvi Khairunnisa"
+date: "`r format(Sys.Date(), '%B %e, %Y')`"
+output:
+  html_document:
+    theme: journal
+    highlight: breezedark
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+# clear-up the environment
+rm(list = ls())
+
+# chunk options
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  comment = "#>"
+)
+
+options(scipen = 100)
+```
+
+***
+# LBB: IMDb Data Visualization
+***
+
+```{r, echo=FALSE, out.width="20%"}
+knitr::include_graphics("imdb.png")
+```
+
+## 1. Pendahuluan
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(scales)
+library(glue)
+library(plotly)
+library(lubridate)
+library(ggplot2)
+library(rAmCharts)
+library(scales)
+library(dplyr)
+```
+
+
+Pada LBB (*Learning by Building*) ini akan dilakukan *Data Visualization* menggunakan *dataset* IMDb. IMDb (Internet Movie Database) adalah sebuah basis data daring informasi yang berkaitan dengan film, acara televisi, video rumahan, dan permainan video, dan acara internet, termasuk daftar pemeran, biografi kru produksi dan personil, ringkasan alur cerita, trivia, dan ulasan serta penilaian oleh penggemar. Sebuah fitur penggemar tambahan, papan pesan, telah dinonaktifkan pada Februari 2017. Awalnya situs ini dioperasikan oleh penggemar, lalu basis data kemudian dimiliki dan dioperasikan oleh IMDB.com Inc., sebuah anak perusahaan dari Amazon. 
+
+
+## 2. Mengimport Data
+
+Hal paling pertama yang harus dilakukan adalah pastikan lokasi folder *dataset* yang ingin diinput sama dengan *Rmd* ini. 
+Kemudian, lanjut dengan *read dataset*. File *dataset* yang digunakan yaitu *imdb.csv*.
+
+```{r}
+imdb <- read.csv("imdb.csv", stringsAsFactors = T)
+```
+
+*Dataset* telah terbaca dan terinput dengan nama *imdb*. 
+Untuk mengetahui isi *dataset* tersebut, lakukan ke tahap selanjutnya yaitu dengan cara menginspeksi data.
+
+
+## 3. Menginspeksi Data
+
+```{r}
+head(imdb)
+```
+```{r}
+dim (imdb)
+```
+Terlihat bahwa data terdiri dari 6178 baris dan 14 kolom. Kemudian, cek *missing value* apakah ada atau tidak
+
+```{r}
+anyNA(imdb)
+```
+```{r}
+colSums(is.na(imdb))
+```
+
+Terlihat bahwa tidak ada *missing value*, sehingga data siap diolah ke tahap selanjutnya.
+
+
+## 4. Mengolah Data
+
+```{r}
+summary(imdb)
+```
+
+Dari summary tersebut, dapat diperoleh beberapa informasi:
+
+1. Terdapat lebih dari 6000 judul yang terdapat di *dataset imdb*.
+2. Adanya *Rate* memungkinkan untuk mengurutkan data dari Rating tertinggi sampai terendah.
+2. Ada dua tipe jenis tontonan yang dinilai oleh *imdb* yaitu tipe film dan tipe series.
+3. Film/series tersebut diproduksi dari tahun 1922 sampai dengan tahun 2023 (perkiraan).
+4. Terdapat sangat banyak jenis genre dari film/series tersebut, sehingga susah untuk diklasifikasikan secara rinci.
+5. Film/series tersebut mengandung unsur: Nudity, Violence, Profanity, Alcohol dan Frightening yang masing - masingnya mempunyai level: Mild,     Moderate, No Rate, None dan Severe.
+
+Setelah mengetahui beberapa informasi yang diperoleh dari summary tersebut, diperoleh ide *visualization* apa yang akan dibuat. Sebelum membuat *visualization*, diperlukan pengolahan data agar proses pembuatan *visualization* bekerja dengan baik dan benar. Pertama, cek tipe data dari setiap kolom *dataset imdb*
+
+```{r}
+str(imdb)
+```
+Ternyata diperlukan *deselect* beberapa kolom karena tidak diperlukan, menghapus koma pada isi kolom Votes dan mengubah tipe data beberapa kolom. Proses tersebut disebut *cleansing data*, hasil pengolahan data disimpan dengan nama *imdb_clean*. 
+
+```{r}
+# Cleansing Data
+imdb_clean <- imdb %>% 
+  select(-c(Duration,Certificate,Episodes)) %>% # deselect beberapa kolom
+  mutate(
+    Name = as.character(Name),# mengubah tipe data
+    Rate = as.numeric(as.character(Rate)),
+    Votes = as.numeric(gsub(",","",Votes)),
+    Genre = as.character(Genre),
+    Nudity = as.character(Nudity),
+    Violence = as.character(Violence),
+    Profanity = as.character(Profanity),
+    Alcohol = as.character(Alcohol),
+    Frightening = as.character(Frightening),
+    Type = as.character(Type)
+  )
+```
+
+Ternyata menghasilkan *Warning* yaitu adanya NA. Untuk lebih akuratnya, cek NA pada dataset *imdb_clean* tersebut
+
+```{r}
+anyNA(imdb_clean)
+```
+```{r}
+colSums(is.na(imdb_clean))
+```
+
+Ternyata benar, terdapat nilai NA di kolom Rate dan Votes. Untuk mengatasinya, ubah nilai NA menjadi 0
+
+```{r}
+imdb_clean[is.na(imdb_clean)] = 0
+```
+
+Cek kembali apakah masih terdapat NA
+
+```{r}
+anyNA(imdb_clean)
+```
+Terlihat bahwa tidak ada NA lagi, sehingga data siap diolah ke tahap selanjutnya yaitu *data wrangling*
+
+
+```{r}
+# Data Wrangling
+
+# Case 1
+imdb_count_type <- imdb_clean %>% 
+  group_by(Type) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(-count)
+
+# Case 2
+imdb_10films <- imdb_clean %>% 
+  filter(Type==imdb_count_type$Type[1]) %>% # filter untuk film
+  group_by(Name) %>% 
+  summarise(mean_rate=mean(Rate)) %>% 
+  ungroup() %>% 
+  arrange(-mean_rate) %>% 
+  top_n(10)
+
+# Case 3
+imdb_10series <- imdb_clean %>% 
+  filter(Type==imdb_count_type$Type[2]) %>% # filter untuk series
+  group_by(Name) %>% 
+  summarise(mean_rate=mean(Rate)) %>% 
+  ungroup() %>% 
+  arrange(-mean_rate) %>% 
+  top_n(10)
+
+# Case 4
+imdb_year <- imdb_clean %>% 
+  group_by(Date) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(-count)
+
+# Case 5
+imdb_count_nudity <- imdb_clean %>% 
+  group_by(Nudity) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(-count)
+```
+
+## 5. Membuat Plot
+
+*PLOT 1*
+
+Visualisasi persentasi banyaknya data film dan series:
+```{r}
+plot1 <- amPie(data.frame(label = as.factor(names(table(imdb_clean$Type))), value = as.vector(table(imdb_clean$Type))), main = "Percentage Data of Films and Series",mainColor="black",theme="light")
+plot1
+```
+
+Dari visualisasi di atas diperoleh bahwa persentase data film itu lebih banyak yaitu 71.97% atau 4446 data, dan persentase data series 28.03% atau 1732 data.
+
+
+*PLOT 2*
+
+Visualisasi judul film berdasarkan rating teratas:
+```{r}
+imdb_films <- imdb_10films %>% 
+  mutate(label=glue("Name: {Name}
+                    Average Views: {comma(mean_rate)}"))
+
+plot2 <- ggplot(imdb_films, aes(x = reorder(Name, mean_rate), 
+                    y = mean_rate,
+                    text = label)) +
+  geom_segment(aes(x=reorder(Name, mean_rate), xend=reorder(Name, mean_rate), y=0,yend=mean_rate), color="red") +
+  geom_point(color="black") +
+  coord_flip() +
+  labs(title = "TOP FILMS RATING",
+       x = NULL,
+       y = "Average Rate") +
+  scale_y_continuous(labels = comma) +
+  theme_minimal()
+
+ggplotly(plot2, tooltip = "text")
+```
+
+Dari visualisasi di atas diperoleh bahwa judul film yang menduduki rating teratas yaitu Toma dan The Shawshank Redemption mempunyai rating yang sama yaitu 9.3 kemudian disusul oleh film The Godfather dengan rating 9.2, dsb
+
+
+*PLOT 3*
+
+Visualisasi judul series berdasarkan rating teratas:
+```{r}
+imdb_series <- imdb_10series %>% 
+  mutate(label=glue("Name: {Name}
+                    Average Views: {comma(mean_rate)}"))
+
+plot3 <- ggplot(imdb_series, aes(x = reorder(Name, mean_rate), 
+                    y = mean_rate,
+                    text = label)) +
+  geom_segment(aes(x=reorder(Name, mean_rate), xend=reorder(Name, mean_rate), y=0,yend=mean_rate), color="red") +
+  geom_point(color="black") +
+  coord_flip() +
+  labs(title = "TOP 10 SERIES RATING",
+       x = NULL,
+       y = "Average Rate") +
+  scale_y_continuous(labels = comma) +
+  theme_minimal()
+
+ggplotly(plot3, tooltip = "text")
+```
+
+Dari visualisasi di atas diperoleh bahwa judul series yang menduduki rating teratas yaitu Aspirants dengan rating 9.7 kemudian disusul oleh The Chosen dan Bluey yang mempunyai rating yang sama yaitu 9.6, dsb
+
+*PLOT 4*
+
+Visualisasi judul film/series berdasarkan tahun:
+```{r}
+imdb_count <- imdb_year %>% 
+  mutate(label = glue(
+    "Year: {Date}
+    Count: {count}"
+  ))
+
+plot4 <- ggplot(imdb_count, aes(x=Date, y= count))+
+  geom_line(col="red") +
+  geom_point(aes(text=label), col="black") +
+  labs(
+  title = glue("Years of Film/Series Production"),
+  x = "Years",
+  y = "Count"
+  ) +
+  theme_minimal()
+
+ggplotly(plot4, tooltip = "text")
+```
+
+Dari visualisasi di atas diperoleh bahwa tahun produksi yang menghasilkan film/series paling banyak yaitu 2021 yaitu sebanyak 736 data dan yang paling sedikit yaitu tahun 1922 yaitu 1 data.
+
+*PLOT 5*
+
+Dari unsur yang terdapat pada setiap film/series, disini hanya akan dibuat plot berdasarkan unsur *Nudity Level* saja
+
+```{r}
+imdb_count2 <- imdb_count_nudity %>% 
+  mutate(label = glue(
+    "Nudity: {Nudity}
+    Count: {count}"
+  ))
+plot5 <- ggplot(data = imdb_count2, aes(x = count, 
+                              y = reorder(Nudity, count), # reorder(A, berdasarkan B)
+                              text = label)) + 
+  geom_col(aes(fill = count)) +
+  labs(title = "NUDITY LEVEL",
+       x = "Count",
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none") 
+
+ggplotly(plot5, tooltip = "text")
+```
+
+Dari visualisasi di atas diperoleh bahwa *Nudity Level* yang paling tinggi adalah level *Mild* dan yang paling rendah adalah level *Severe*.
